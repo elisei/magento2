@@ -91,7 +91,7 @@ class Add extends \Magento\Checkout\Controller\Cart implements HttpPostActionInt
 
         $params = $this->getRequest()->getParams();
 
-        try {
+       try {
             if (isset($params['qty'])) {
                 $filter = new \Zend_Filter_LocalizedToNormalized(
                     ['locale' => $this->_objectManager->get(
@@ -144,14 +144,26 @@ class Add extends \Magento\Checkout\Controller\Cart implements HttpPostActionInt
                         );
                     }
                 }
-                return $this->goBack(null, $product);
+                return $this->goBack(null, $product, null);
             }
         } catch (\Magento\Framework\Exception\LocalizedException $e) {
+            $message = __(
+                'Outra pessoa está comprando o produto %1 nesse momento.',
+                $product->getName()
+            );
+            $this->messageManager->addErrorMessage($message);
             if ($this->_checkoutSession->getUseNotice(true)) {
                 $this->messageManager->addNoticeMessage(
                     $this->_objectManager->get(\Magento\Framework\Escaper::class)->escapeHtml($e->getMessage())
                 );
+                $url = $this->_checkoutSession->getRedirectUrl(true);
+
+                if (!$url) {
+                    $url = $this->_redirect->getRedirectUrl($this->getCartUrl());
+                }
+                return $this->goBack($url);
             } else {
+                $errorIsSable = true;
                 $messages = array_unique(explode("\n", $e->getMessage()));
                 foreach ($messages as $message) {
                     $this->messageManager->addErrorMessage(
@@ -159,14 +171,12 @@ class Add extends \Magento\Checkout\Controller\Cart implements HttpPostActionInt
                     );
                 }
             }
-
             $url = $this->_checkoutSession->getRedirectUrl(true);
 
             if (!$url) {
                 $url = $this->_redirect->getRedirectUrl($this->getCartUrl());
             }
-
-            return $this->goBack($url);
+            return $this->goBack(null, $url, $errorIsSable);
         } catch (\Exception $e) {
             $this->messageManager->addExceptionMessage(
                 $e,
@@ -184,7 +194,7 @@ class Add extends \Magento\Checkout\Controller\Cart implements HttpPostActionInt
      * @param \Magento\Catalog\Model\Product $product
      * @return $this|\Magento\Framework\Controller\Result\Redirect
      */
-    protected function goBack($backUrl = null, $product = null)
+    protected function goBack($backUrl = null, $product = null, $errorIsSable = null)
     {
         if (!$this->getRequest()->isAjax()) {
             return parent::_goBack($backUrl);
@@ -194,6 +204,8 @@ class Add extends \Magento\Checkout\Controller\Cart implements HttpPostActionInt
 
         if ($backUrl || $backUrl = $this->getBackUrl()) {
             $result['backUrl'] = $backUrl;
+        } elseif($errorIsSable) {
+            $result['errorIsSable'] = true;
         } else {
             if ($product && !$product->getIsSalable()) {
                 $result['product'] = [
